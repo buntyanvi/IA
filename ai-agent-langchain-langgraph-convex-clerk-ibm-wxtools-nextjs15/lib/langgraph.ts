@@ -22,8 +22,9 @@ import SYSTEM_MESSAGE from "@/constants/systemMessage"
 import { ChatGoogleGenerativeAI } from "@langchain/google-genai"
 //import { ChatOpenAI } from "@langchain/openai"
 //import { ChatAnthropic } from "@langchain/anthropic"
-import { ChatDeepSeek } from "@langchain/deepseek"
-
+//import { ChatDeepSeek } from "@langchain/deepseek"
+//import { AzureChatOpenAI } from "@langchain/openai"
+//import { ChatMistralAI } from "@langchain/mistralai"
 // Trim the messages to manage conversation history
 const trimmer = trimMessages({
   maxTokens: 10,
@@ -47,9 +48,14 @@ const toolNode = new ToolNode(tools)
 // Connect to the LLM provider with better tool instructions
 const initialiseModel = () => {
   const model = new ChatGoogleGenerativeAI({
-    //modelName: "gpt-3.5-turbo",
-    //modelName: "claude-3-5-sonnet-20241022",
-    //anthropicApiKey: process.env.ANTHROPIC_API_KEY,
+    // azureOpenAIEndpoint: process.env.AZURE_OPENAI_API_ENDPOINT,
+    // azureOpenAIApiKey: process.env.AZURE_OPENAI_API_KEY,
+    // azureOpenAIApiDeploymentName: process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME,
+    // azureOpenAIApiInstanceName: process.env.AZURE_OPENAI_INSTANCE_NAME,
+    // temperature: 0.7,
+    // maxTokens: 4096,
+    // streaming: true,
+
     apiKey: process.env.GEMINI_API_KEY,
     temperature: 0.7,
     maxOutputTokens: 4096,
@@ -87,6 +93,12 @@ const initialiseModel = () => {
 
   return model
 }
+console.log("API Key" + process.env.AZURE_OPENAI_API_KEY)
+console.log("API Endpoint" + process.env.AZURE_OPENAI_API_ENDPOINT)
+console.log(
+  "API Deployment Name" + process.env.AZURE_OPENAI_API_DEPLOYMENT_NAME
+)
+console.log("API Instance Name" + process.env.AZURE_OPENAI_INSTANCE_NAME)
 
 // Define the function that determines whether to continue or not
 function shouldContinue(state: typeof MessagesAnnotation.State) {

@@ -32,37 +32,30 @@ export async function POST(req: Request) {
     if (!userId) {
       return new Response("Unauthorized", { status: 401 })
     }
-
     const { messages, newMessage, chatId } =
       (await req.json()) as ChatRequestBody
     const convex = getConvexClient()
 
-    // Create stream with larger queue strategy for better performance
     const stream = new TransformStream({}, { highWaterMark: 1024 })
     const writer = stream.writable.getWriter()
-
     const response = new Response(stream.readable, {
       headers: {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache, no-transform",
         Connection: "keep-alive",
-        "X-Accel-Buffering": "no", // Disable buffering for nginx which is required for SSE to work properly
+        "X-Accel-Buffering": "no",
       },
     })
 
-    // Handle the streaming response
     ;(async () => {
       try {
-        // Send initial connection established message
         await sendSSEMessage(writer, { type: StreamMessageType.Connected })
 
-        // Send user message to Convex
         await convex.mutation(api.messages.send, {
           chatId,
           content: newMessage,
         })
 
-        // Convert messages to LangChain format
         const langChainMessages = [
           ...messages.map((msg) =>
             msg.role === "user"
@@ -73,17 +66,13 @@ export async function POST(req: Request) {
         ]
 
         try {
-          // Create the event stream
           const eventStream = await submitQuestion(langChainMessages, chatId)
 
-          // Process the events
           for await (const event of eventStream) {
             console.log("🔄 Event:", event)
-
             if (event.event === "on_chat_model_stream") {
               const token = event.data.chunk
               if (token) {
-                // Access the text property from the AIMessageChunk
                 const text = token.content.at(0)?.["text"]
                 if (text) {
                   await sendSSEMessage(writer, {
@@ -100,7 +89,6 @@ export async function POST(req: Request) {
               })
             } else if (event.event === "on_tool_end") {
               const toolMessage = new ToolMessage(event.data.output)
-
               await sendSSEMessage(writer, {
                 type: StreamMessageType.ToolEnd,
                 tool: toolMessage.lc_kwargs.name || "unknown",
@@ -109,7 +97,6 @@ export async function POST(req: Request) {
             }
           }
 
-          // Send completion message without storing the response
           await sendSSEMessage(writer, { type: StreamMessageType.Done })
         } catch (streamError) {
           console.error("Error in event stream:", streamError)

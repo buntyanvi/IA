@@ -1,5 +1,4 @@
 "use client"
-
 import { useEffect, useRef, useState } from "react"
 import { Doc, Id } from "@/convex/_generated/dataModel"
 import { Button } from "@/components/ui/button"
@@ -34,8 +33,6 @@ export default function ChatInterface({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" })
   }, [messages, streamedResponse])
 
-  console.log(messages, streamedResponse, currentTool)
-
   const formatToolOutput = (output: unknown): string => {
     if (typeof output === "string") return output
     return JSON.stringify(output, null, 2)
@@ -47,30 +44,24 @@ export default function ChatInterface({
     output: unknown
   ) => {
     const terminalHtml = `<div class="bg-[#1e1e1e] text-white font-mono p-2 rounded-md my-2 overflow-x-auto whitespace-normal max-w-[600px]">
-      <div class="flex items-center gap-1.5 border-b border-gray-700 pb-1">
-        <span class="text-red-500">●</span>
-        <span class="text-yellow-500">●</span>
-        <span class="text-green-500">●</span>
-        <span class="text-gray-400 ml-1 text-sm">~/${streamedResponse}</span>
-      </div>
-      <div class="text-gray-400 mt-1">$ Input</div>
-      <pre class="text-yellow-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(
-        input
-      )}</pre>
-      <div class="text-gray-400 mt-2">$ Output</div>
-      <pre class="text-green-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(
-        output
-      )}</pre>
-    </div>`
-
+<div class="flex items-center gap-1.5 border-b border-gray-700 pb-1">
+<span class="text-red-500">●</span>
+<span class="text-yellow-500">●</span>
+<span class="text-green-500">●</span>
+<span class="text-gray-400 ml-1 text-sm">~/${streamedResponse}</span>
+</div>
+<div class="text-gray-400 mt-1">$ Input</div>
+<pre class="text-yellow-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(
+      input
+    )}</pre>
+<div class="text-gray-400 mt-2">$ Output</div>
+<pre class="text-green-400 mt-0.5 whitespace-pre-wrap overflow-x-auto">${formatToolOutput(
+      output
+    )}</pre>
+</div>`
     return `---START---\n${terminalHtml}\n---END---`
   }
 
-  /**
-   * Processes a ReadableStream from the SSE response.
-   * This function continuously reads chunks of data from the stream until it's done.
-   * Each chunk is decoded from Uint8Array to string and passed to the callback.
-   */
   const processStream = async (
     reader: ReadableStreamDefaultReader<Uint8Array>,
     onChunk: (chunk: string) => Promise<void>
@@ -91,13 +82,11 @@ export default function ChatInterface({
     const trimmedInput = input.trim()
     if (!trimmedInput || isLoading) return
 
-    // Reset UI state for new message
     setInput("")
     setStreamedResponse("")
     setCurrentTool(null)
     setIsLoading(true)
 
-    // Add user's message immediately for better UX
     const optimisticUserMessage: Doc<"messages"> = {
       _id: `temp_${Date.now()}`,
       chatId,
@@ -105,14 +94,10 @@ export default function ChatInterface({
       role: "user",
       createdAt: Date.now(),
     } as Doc<"messages">
-
     setMessages((prev) => [...prev, optimisticUserMessage])
 
-    // Track complete response for saving to database
     let fullResponse = ""
-
     try {
-      // Prepare chat history and new message for API
       const requestBody: ChatRequestBody = {
         messages: messages.map((msg) => ({
           role: msg.role,
@@ -122,7 +107,6 @@ export default function ChatInterface({
         chatId,
       }
 
-      // Initialize SSE connection
       const response = await fetch("/api/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -132,28 +116,20 @@ export default function ChatInterface({
       if (!response.ok) throw new Error(await response.text())
       if (!response.body) throw new Error("No response body available")
 
-      // Create SSE parser and stream reader
       const parser = createSSEParser()
       const reader = response.body.getReader()
 
-      // Process the stream chunks
       await processStream(reader, async (chunk) => {
-        // Parse SSE messages from the chunk
         const messages = parser.parse(chunk)
-
-        // Handle each message based on its type
         for (const message of messages) {
           switch (message.type) {
             case StreamMessageType.Token:
-              // Handle streaming tokens (normal text response)
               if ("token" in message) {
                 fullResponse += message.token
                 setStreamedResponse(fullResponse)
               }
               break
-
             case StreamMessageType.ToolStart:
-              // Handle start of tool execution (e.g. API calls, file operations)
               if ("tool" in message) {
                 setCurrentTool({
                   name: message.tool,
@@ -167,11 +143,8 @@ export default function ChatInterface({
                 setStreamedResponse(fullResponse)
               }
               break
-
             case StreamMessageType.ToolEnd:
-              // Handle completion of tool execution
               if ("tool" in message && currentTool) {
-                // Replace the "Processing..." message with actual output
                 const lastTerminalIndex = fullResponse.lastIndexOf(
                   '<div class="bg-[#1e1e1e]'
                 )
@@ -188,16 +161,12 @@ export default function ChatInterface({
                 setCurrentTool(null)
               }
               break
-
             case StreamMessageType.Error:
-              // Handle error messages from the stream
               if ("error" in message) {
                 throw new Error(message.error)
               }
               break
-
             case StreamMessageType.Done:
-              // Handle completion of the entire response
               const assistantMessage: Doc<"messages"> = {
                 _id: `temp_assistant_${Date.now()}`,
                 chatId,
@@ -206,14 +175,12 @@ export default function ChatInterface({
                 createdAt: Date.now(),
               } as Doc<"messages">
 
-              // Save the complete message to the database
               const convex = getConvexClient()
               await convex.mutation(api.messages.store, {
                 chatId,
                 content: fullResponse,
                 role: "assistant",
               })
-
               setMessages((prev) => [...prev, assistantMessage])
               setStreamedResponse("")
               return
@@ -221,9 +188,7 @@ export default function ChatInterface({
         }
       })
     } catch (error) {
-      // Handle any errors during streaming
       console.error("Error sending message:", error)
-      // Remove the optimistic user message if there was an error
       setMessages((prev) =>
         prev.filter((msg) => msg._id !== optimisticUserMessage._id)
       )
@@ -238,15 +203,12 @@ export default function ChatInterface({
       setIsLoading(false)
     }
   }
-  console.log("Streamed response is:", streamedResponse)
 
   return (
     <main className="flex flex-col h-[calc(100vh-theme(spacing.14))]">
-      {/* Messages container */}
       <section className="flex-1 overflow-y-auto bg-gray-50 p-2 md:p-0">
         <div className="max-w-4xl mx-auto p-4 space-y-3">
           {messages?.length === 0 && <WelcomeMessage />}
-
           {messages?.map((message: Doc<"messages">) => (
             <MessageBubble
               key={message._id}
@@ -254,17 +216,12 @@ export default function ChatInterface({
               isUser={message.role === "user"}
             />
           ))}
-
-          {/* Debugging streamedResponse */}
           {streamedResponse && (
             <div className="p-4 bg-gray-200 rounded-md shadow-sm text-sm text-gray-700">
               Debug: {streamedResponse}
             </div>
           )}
-
           {streamedResponse && <MessageBubble content={streamedResponse} />}
-
-          {/* Loading indicator */}
           {isLoading && !streamedResponse && (
             <div className="flex justify-start animate-in fade-in-0">
               <div className="rounded-2xl px-4 py-3 bg-white text-gray-900 rounded-bl-none shadow-sm ring-1 ring-inset ring-gray-200">
@@ -284,8 +241,6 @@ export default function ChatInterface({
           <div ref={messagesEndRef} />
         </div>
       </section>
-
-      {/* Input form */}
       <footer className="border-t bg-white p-4">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto relative">
           <div className="relative flex items-center">
